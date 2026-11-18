@@ -15,11 +15,8 @@ jobs:
     strategy:
       matrix:
         features:
+          - --all-features
           - ""
-          - --features cargo
-          - --no-default-features
-          - --no-default-features --features serde
-          - --no-default-features --features cargo
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

@@ -8,7 +8,7 @@ This repository defines and contains tooling for the Typst NOTICE file format. T
 
 To this effect, this repository contains:
 
-- A specification for the Typst NOTICE file format, including guidance for authors
+- [A specification for the Typst NOTICE file format](https://github.com/typst/notices/blob/main/format.md), including guidance for authors
 - A crate to process Typst NOTICE files
 - A GitHub Action to check and create Typst NOTICE files
 
@@ -18,7 +18,7 @@ The `notices` crate can check a repository for a valid Typst NOTICE file or prep
 
 **To validate a Typst NOTICE file,** run `notices check`. When the `--deps` flag is passed, it additionally checks the licenses of the dependency tree and of the Typst NOTICE files that dependencies ship against the allowed licenses.
 
-For a release, this crate will merge the local NOTICE as well as all dependency crates and their licenses and notices into a singular Typst NOTICE file. Where dependencies distribute Typst NOTICE files, they will be parsed and merged with the final output, so that contents not covered by their package license are included, too. **To create a release notice file,** run `notices release -o NOTICE`. Pass `-o` more than once (or separate paths with commas) to write several outputs; files ending in `.json` are written as JSON. For consumption in tools that are not aware of Typst NOTICE files, this software can also create a JSON representation of the release notice.
+For a release, this crate will merge the local NOTICE as well as all dependency crates and their licenses and notices into a singular Typst NOTICE file. Where dependencies distribute Typst NOTICE files, they will be parsed and merged with the final output, so that contents not covered by their package license are included, too. **To create a release notice file,** run `notices release -o NOTICE`. Pass `-o` more than once (or separate paths with commas) to write several outputs; files ending in `.json` are [written as JSON](https://github.com/typst/notices/blob/main/json.md) (intended for consumption in tools that are not aware of Typst NOTICE files).
 
 The crate can also be used as a library to parse, write, and merge Typst NOTICE files.
 
@@ -50,7 +50,7 @@ allow = ["CC-BY-SA-3.0"]
 
 # States the license of a crate whose license cannot be detected correctly
 # automatically. Only applies while the checksums of the files match, for all
-# versions of the crate. Same format as in cargo-about (without `git`).
+# versions of the crate.
 [clarify.libm]
 license = "MIT"
 files = [{ path = "LICENSE.txt", checksum = "88abfa95…", start = "rust-lang/libm as a whole", end = "SOFTWARE." }]
