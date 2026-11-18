@@ -78,6 +78,10 @@ The action downloads a prebuilt binary from this repository's releases, verifies
 
 The `repository` input (default `typst/notices`) selects the repository to download releases from. Arguments are split at whitespace; quoting is not supported. The `SHA256SUMS` file guards against corrupted downloads, not against a compromised release.
 
+## License
+
+This crate is dual-licensed under the MIT and Apache 2.0 licenses. The released binaries come with a Typst NOTICE file for their dependencies, created by the binaries themselves.
+
 ## AI Disclosure
 
 As this crate is intended as CI-only tooling, we have created it using AI, including Claude Sonnet 5.5, Claude Opus 5.5, and Xiaomi MiMo v2.6 Pro. This README and the format.json file have been created manually.

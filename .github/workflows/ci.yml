@@ -18,7 +18,7 @@ jobs:
           - --all-features
           - ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -31,6 +31,18 @@ jobs:
     name: Check examples
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
       - run: for f in examples/*; do cargo run --locked -q -- check "$f"; done
+
+  # Checks the licenses of the dependencies of the released binaries, see
+  # `.cargo/notices.toml`.
+  licenses:
+    name: Check licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+      - run: >
+          cargo run --locked -q --features cargo --
+          check --deps --allow-missing --locked --features cargo,serde

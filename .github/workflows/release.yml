@@ -26,7 +26,7 @@ jobs:
           - runner: windows-2022
             asset: notices-windows-x86_64.exe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Check action version
         shell: bash
         run: |
@@ -42,15 +42,23 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          cargo build --release --locked --features cargo
+          cargo build --release --locked --features cargo,serde
           exe=target/release/notices
           [[ "$RUNNER_OS" == Windows ]] && exe+=.exe
           mkdir dist
           cp "$exe" "dist/${{ matrix.asset }}"
-      - uses: actions/upload-artifact@v4
+      # The binaries are released with a NOTICE file for their dependencies,
+      # created by the binary itself. `.cargo/notices.toml` covers the targets of
+      # all builds, so one of them suffices.
+      - name: Create NOTICE
+        if: matrix.asset == 'notices-linux-x86_64'
+        run: |
+          target/release/notices check --deps --allow-missing --locked --features cargo,serde
+          target/release/notices release --locked --features cargo,serde -o dist/NOTICE,dist/NOTICE.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}
+          path: dist/*
 
   release:
     name: Publish release
@@ -59,7 +67,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true
