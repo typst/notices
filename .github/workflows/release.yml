@@ -4,11 +4,14 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  VERSION: ${{ github.ref_name }}
 
 jobs:
   build:
@@ -55,28 +58,16 @@ jobs:
         run: |
           target/release/notices check --deps --allow-missing --locked --features cargo,serde
           target/release/notices release --locked --features cargo,serde -o dist/NOTICE,dist/NOTICE.json
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ${{ matrix.asset }}
-          path: dist/*
-
-  release:
-    name: Publish release
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          path: dist
-          merge-multiple: true
-      - name: Compute checksums
-        working-directory: dist
-        run: sha256sum notices-* > SHA256SUMS
-      - name: Create release
+      - name: Upload asset
+        if: matrix.asset == 'notices-linux-x86_64'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "$GITHUB_REF_NAME" dist/*
-          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          gh release upload $VERSION "dist/NOTICE"
+          gh release upload $VERSION "dist/NOTICE.json"
+      - name: Upload asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload $VERSION "dist/${{ matrix.asset }}"
