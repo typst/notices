@@ -1,0 +1,43 @@
+[package]
+name = "notices"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["cli"]
+# Builds the `notices` command line tool.
+cli = ["dep:clap", "serde"]
+# Serializes license blocks to JSON, see `json.md`.
+serde = ["dep:serde", "dep:serde_json"]
+# Checks and collects the licenses of a Cargo dependency tree with
+# `cargo-about`.
+cargo = [
+    "dep:anyhow",
+    "dep:cargo-about",
+    "dep:krates",
+    "dep:serde",
+    "dep:toml",
+    "dep:toml-span",
+    "spdx/text",
+]
+
+[[bin]]
+name = "notices"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[dependencies]
+clap = { version = "4.6.8", features = ["derive"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+spdx = "0.13.6"
+unscanny = "0.1.0"
+
+# Optional dependencies of the `cargo` feature. `cargo-about` is pinned exactly
+# because its library API is not covered by semver. `krates` is the version it
+# uses, and `toml-span` is needed to name the types of its configuration.
+cargo-about = { version = "=0.9.3", default-features = false, optional = true }
+anyhow = { version = "1", optional = true }
+krates = { version = "0.21", optional = true }
+toml = { version = "0.8", default-features = false, features = ["parse"], optional = true }
+toml-span = { version = "0.7", optional = true }

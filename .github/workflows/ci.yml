@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - ""
+          - --features cargo
+          - --no-default-features
+          - --no-default-features --features serde
+          - --no-default-features --features cargo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked ${{ matrix.features }} -- -D warnings
+      - run: cargo test --locked ${{ matrix.features }}
+
+  # Validates this repository's own Typst NOTICE examples with the CLI.
+  examples:
+    name: Check examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: for f in examples/*; do cargo run --locked -q -- check "$f"; done

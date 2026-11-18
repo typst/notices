@@ -1,0 +1,9 @@
+# The configuration of the fixture project.
+
+allow = ["MIT", "Zlib"]
+
+[clarify.custom]
+license = "MIT"
+files = [
+    { path = "LICENSE", checksum = "25da9fbabb03d6914c365a92c16d334842c4fb8ec35d812a06d2f357fc84af71" },
+]

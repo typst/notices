@@ -1,0 +1,6 @@
+[package]
+name = "apache-and"
+version = "1.0.0"
+edition = "2024"
+license = "MIT AND Apache-2.0"
+repository = "https://example.com/apache-and"

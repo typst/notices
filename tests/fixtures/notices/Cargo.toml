@@ -1,0 +1,15 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[features]
+kept = ["dep:kept"]
+malformed = ["dep:malformed"]
+
+[dependencies]
+kept = { path = "crates/kept", optional = true }
+malformed = { path = "crates/malformed", optional = true }
+ordinary = { path = "crates/ordinary" }
+pruned = { path = "crates/pruned" }

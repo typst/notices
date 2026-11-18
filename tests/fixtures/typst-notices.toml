@@ -1,0 +1,59 @@
+# Typst's license configuration, translated from its `.cargo/deny.toml` and
+# `.cargo/about.toml`.
+
+# The order matters: for `A OR B` expressions, the first listed license that the
+# crate offers is chosen. We prefer Apache-2.0 (Typst's own license) and then
+# the least restrictive licenses.
+allow = [
+    "Apache-2.0",
+    "0BSD",
+    "CC0-1.0",
+    "Zlib",
+    "MIT",
+    "ISC",
+    "BSD-2-Clause",
+    "Unicode-3.0",
+    "BSD-3-Clause",
+    "NCSA",
+    "Unicode-DFS-2016",
+    "MPL-2.0",
+]
+
+# The targets we build release binaries for.
+targets = [
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "armv7-unknown-linux-musleabi",
+    "riscv64gc-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+]
+
+# Only code that ends up in the binary needs to be attributed.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+private = { ignore = true }
+
+# The published crate contains no license file, so there is no text to include.
+# Its licenses are still checked.
+omit = ["roman-numerals-rs"]
+
+# Without this, the license headers of individual source files are picked up
+# as additional license texts.
+[clarify.kamadak-exif]
+license = "BSD-2-Clause"
+files = [
+    { path = "LICENSE", checksum = "17c496a77909a1f26006427d27e58a1d1514baa6a332240aa5fc543e3fa7295d" },
+]
+
+# The license file contains both the MIT and Apache-2.0 texts, so cargo-about
+# falls back to the generic MIT template.
+[clarify.libm]
+license = "MIT"
+files = [
+    { path = "LICENSE.txt", checksum = "88abfa952aa119ec3671f35fa0dc52589721f7f93982bd90f9649528f8fd74f8", start = "rust-lang/libm as a whole", end = "SOFTWARE." },
+]
+

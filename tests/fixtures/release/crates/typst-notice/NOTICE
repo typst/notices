@@ -1,0 +1,28 @@
+This NOTICE file compiles licenses and notices for code, data, and other
+contents of this software that originate from third parties. In a source
+repository, it covers contents not tracked by the dependency tree or other
+machine-readable manifests; accompanying a distribution, it can also cover the
+dependencies included in it. It is machine-readable and follows the format set
+out in https://github.com/typst/notice (version 1). Tools that can parse this
+file can use it to incorporate it into license notices, Software Bills of
+Materials (SBOMs), etc of their distributions of this software, provided the
+contents within are represented faithfully. Other distributions must reproduce
+this file verbatim.
+
+================================================================================
+CC-BY-SA-3.0 --- This license applies to:
+
+* Example data
+  used for testing
+
+  Paths: `data/`
+  Source: https://example.com/data
+
+* Test fonts
+
+  Paths: `fonts/`
+  Source: https://example.com/fonts
+  Not included when used as a library
+
+Example license text.
+================================================================================

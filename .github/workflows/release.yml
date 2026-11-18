@@ -1,0 +1,74 @@
+# Builds the `notices` binary for the platforms the GitHub Action supports and
+# attaches it, together with SHA-256 checksums, to the release of the pushed
+# tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.asset }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            asset: notices-linux-x86_64
+          - runner: ubuntu-22.04-arm
+            asset: notices-linux-aarch64
+          - runner: macos-14
+            asset: notices-macos-aarch64
+          - runner: windows-2022
+            asset: notices-windows-x86_64.exe
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check action version
+        shell: bash
+        run: |
+          default=$(sed -n 's/^    default: \(v[0-9].*\)$/\1/p' action.yml)
+          if [[ "$default" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::The default of the version input in action.yml is $default, expected $GITHUB_REF_NAME"
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+      # The binary links dynamically against the glibc of the build image, so
+      # it needs glibc 2.35 or newer. That covers GitHub-hosted runners, but
+      # not older container images.
+      - name: Build
+        shell: bash
+        run: |
+          cargo build --release --locked --features cargo
+          exe=target/release/notices
+          [[ "$RUNNER_OS" == Windows ]] && exe+=.exe
+          mkdir dist
+          cp "$exe" "dist/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Compute checksums
+        working-directory: dist
+        run: sha256sum notices-* > SHA256SUMS
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" dist/*
+          --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

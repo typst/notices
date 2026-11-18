@@ -1,0 +1,12 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+apache-and = { path = "crates/apache-and" }
+either = { path = "crates/either" }
+plain = { path = "crates/plain" }
+plain-notice = { path = "crates/plain-notice" }
+typst-notice = { path = "crates/typst-notice" }

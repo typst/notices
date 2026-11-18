@@ -1,0 +1,70 @@
+name: Typst NOTICE
+description: >
+  Checks Typst NOTICE files and the licenses of Cargo dependencies, and creates
+  release NOTICE files, with a prebuilt `notices` binary.
+
+inputs:
+  args:
+    description: >
+      The arguments to run `notices` with, e.g. `check --deps --allow-missing`
+      or `release -o NOTICE,NOTICE.json`. The arguments are split at
+      whitespace; quoting is not supported.
+    required: true
+  version:
+    description: >
+      The release of `notices` to download. Defaults to the release this
+      version of the action belongs to.
+    # Bumped together with every release.
+    default: v0.1.0
+  token:
+    description: >
+      A token with read access to the releases of the repository.
+    default: ${{ github.token }}
+  repository:
+    description: >
+      The repository to download releases of `notices` from.
+    default: typst/notices
+
+runs:
+  using: composite
+  steps:
+    - name: Download notices
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        VERSION: ${{ inputs.version }}
+        REPO: ${{ inputs.repository }}
+      run: |
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) asset=notices-linux-x86_64 ;;
+          Linux-ARM64) asset=notices-linux-aarch64 ;;
+          macOS-ARM64) asset=notices-macos-aarch64 ;;
+          Windows-X64) asset=notices-windows-x86_64.exe ;;
+          *) echo "::error::notices has no binary for $RUNNER_OS on $RUNNER_ARCH"; exit 1 ;;
+        esac
+
+        dir="$RUNNER_TEMP/notices-$VERSION"
+        mkdir -p "$dir"
+        gh release download "$VERSION" --repo "$REPO" --dir "$dir" --clobber \
+          --pattern "$asset" --pattern SHA256SUMS
+
+        cd "$dir"
+        grep -E "^[0-9a-f]{64}  $asset\$" SHA256SUMS > expected
+        if command -v sha256sum > /dev/null; then
+          sha256sum --check --strict expected
+        else
+          shasum --algorithm 256 --check --strict expected
+        fi
+
+        chmod +x "$asset"
+        echo "NOTICES_BIN=$dir/$asset" >> "$GITHUB_ENV"
+
+    - name: Run notices
+      shell: bash
+      env:
+        ARGS: ${{ inputs.args }}
+      # The arguments are passed through the environment rather than
+      # interpolated into the script, and split without evaluating them.
+      run: |
+        read -ra args <<< "$ARGS"
+        "$NOTICES_BIN" "${args[@]}"

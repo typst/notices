@@ -1,0 +1,6 @@
+[package]
+name = "plain-notice"
+version = "1.0.0"
+edition = "2024"
+license = "MIT"
+repository = "https://example.com/plain-notice"
