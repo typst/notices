@@ -22,6 +22,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: features${{ matrix.features }}
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked ${{ matrix.features }} -- -D warnings
       - run: cargo test --locked ${{ matrix.features }}
@@ -33,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: for f in examples/*; do cargo run --locked -q -- check "$f"; done
 
   # Checks the licenses of the dependencies of the released binaries, see
@@ -43,6 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: >
-          cargo run --locked -q --features cargo --
+          cargo run --release --locked -q --features cargo --
           check --deps --allow-missing --locked --features cargo,serde
