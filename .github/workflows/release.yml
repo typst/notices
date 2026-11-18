@@ -21,9 +21,9 @@ jobs:
             asset: notices-linux-x86_64
           - runner: ubuntu-22.04-arm
             asset: notices-linux-aarch64
-          - runner: macos-14
+          - runner: macos-26
             asset: notices-macos-aarch64
-          - runner: windows-2022
+          - runner: windows-2025
             asset: notices-windows-x86_64.exe
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
