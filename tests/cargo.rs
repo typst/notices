@@ -6,7 +6,9 @@
 
 use std::path::Path;
 
-use notices::cargo::{CONFIG_PATH, Config, MetadataOptions, Report, check, release};
+use notices::cargo::{
+    CONFIG_PATH, Config, MetadataOptions, Report, check, find_in_workspace, release,
+};
 use notices::{Inclusion, LicenseBlock};
 
 /// The checksum of `crates/custom/LICENSE` in the `cargo` fixture.
@@ -170,6 +172,14 @@ mod config {
         // A workspace root ends the search.
         let (_, manifest) = tree("stop", "[workspace]\nmembers = [\"package\"]\n");
         assert_eq!(Config::find(&manifest), None);
+
+        // Other files are found the same way, up to and including the
+        // workspace root.
+        let (root, manifest) = tree("notice", "[workspace]\nmembers = [\"package\"]\n");
+        assert_eq!(find_in_workspace(&manifest, "NOTICE"), None);
+        let notice = root.join("workspace/NOTICE");
+        std::fs::write(&notice, "").unwrap();
+        assert_eq!(find_in_workspace(&manifest, "NOTICE"), Some(notice));
     }
 }
 

@@ -59,27 +59,10 @@ impl Config {
         text.parse().map_err(|err| format!("{}: {err}", path.display()))
     }
 
-    /// Finds the configuration file for the project with the given manifest.
-    ///
-    /// Looks for [`CONFIG_PATH`] in the manifest's directory and then in each
-    /// parent directory. The search ends after the root of the workspace, i.e.
-    /// the first directory whose `Cargo.toml` has a `[workspace]` table, so that
-    /// the configuration of an unrelated enclosing project is never picked up.
+    /// Finds the configuration file for the project with the given manifest:
+    /// [`CONFIG_PATH`] in the workspace root, see [`find_in_workspace`].
     pub fn find(manifest_path: &Path) -> Option<PathBuf> {
-        let manifest_path = std::path::absolute(manifest_path).ok()?;
-        for dir in manifest_path.parent()?.ancestors() {
-            let candidate = dir.join(CONFIG_PATH);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-
-            let manifest = std::fs::read_to_string(dir.join("Cargo.toml"));
-            let table = manifest.ok().and_then(|text| text.parse::<toml::Table>().ok());
-            if table.is_some_and(|table| table.contains_key("workspace")) {
-                break;
-            }
-        }
-        None
+        find_in_workspace(manifest_path, CONFIG_PATH)
     }
 
     /// Replaces the targets, e.g. with ones given on the command line.
@@ -98,6 +81,29 @@ impl FromStr for Config {
         }
         Ok(config)
     }
+}
+
+/// Finds a file of the project with the given manifest.
+///
+/// Looks for `relative` in the manifest's directory and then in each parent
+/// directory. The search ends after the root of the workspace, i.e. the first
+/// directory whose `Cargo.toml` has a `[workspace]` table, so that a file of an
+/// unrelated enclosing project is never picked up.
+pub fn find_in_workspace(manifest_path: &Path, relative: &str) -> Option<PathBuf> {
+    let manifest_path = std::path::absolute(manifest_path).ok()?;
+    for dir in manifest_path.parent()?.ancestors() {
+        let candidate = dir.join(relative);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+
+        let manifest = std::fs::read_to_string(dir.join("Cargo.toml"));
+        let table = manifest.ok().and_then(|text| text.parse::<toml::Table>().ok());
+        if table.is_some_and(|table| table.contains_key("workspace")) {
+            break;
+        }
+    }
+    None
 }
 
 /// Configures which crates are private and thus not checked.
