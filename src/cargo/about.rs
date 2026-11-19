@@ -16,6 +16,7 @@ use cargo_about::licenses::{
 use krates::semver::Version;
 use spdx::{AdditionItem, LicenseItem, LicenseReq};
 use toml_span::Spanned;
+use unscanny::Scanner;
 
 use super::{
     Clarification, ClarificationFile, Config, MetadataOptions, Report, Severity,
@@ -258,8 +259,12 @@ fn license_texts(krate_license: &KrateLicense, req: &LicenseReq) -> Vec<String> 
             continue;
         };
 
-        if applies(&file.license, &req.license) && !texts.contains(text) {
-            texts.push(text.clone());
+        if !applies(&file.license, &req.license) {
+            continue;
+        }
+        let text = strip_comment_markers(text).unwrap_or_else(|| text.clone());
+        if !texts.contains(&text) {
+            texts.push(text);
         }
     }
 
@@ -281,6 +286,32 @@ fn license_texts(krate_license: &KrateLicense, req: &LicenseReq) -> Vec<String> 
             .collect();
     }
     with
+}
+
+/// Removes the line comment markers from a license text that is entirely
+/// commented out, e.g. a license file or a source file header whose every line
+/// starts with `// ` or `//! `.
+///
+/// Returns `None` if any other line occurs or if nothing but blank lines
+/// remains.
+fn strip_comment_markers(text: &str) -> Option<String> {
+    let mut out = String::with_capacity(text.len());
+    let mut has_content = false;
+    for line in text.lines() {
+        let mut s = Scanner::new(line);
+        if s.eat_if("//") {
+            s.eat_if('!');
+            if !s.done() && !s.eat_if(' ') {
+                return None;
+            }
+            has_content |= !s.after().trim().is_empty();
+            out.push_str(s.after());
+        } else if !line.trim().is_empty() {
+            return None;
+        }
+        out.push('\n');
+    }
+    has_content.then_some(out)
 }
 
 /// Whether the text contains the needle, ignoring differences in whitespace.
@@ -390,6 +421,28 @@ fn check_text(contents: &str, file: &ClarificationFile) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_strip_comment_markers() {
+        let strip = strip_comment_markers;
+        assert_eq!(
+            strip("// Copyright A\n//\n//   indented\r\n\n//! doc\n//!\n").as_deref(),
+            Some("Copyright A\n\n  indented\n\ndoc\n\n"),
+        );
+
+        // Texts with other lines, other markers, or a marker without a space are
+        // not stripped.
+        assert_eq!(strip("MIT License\n// not a comment\n"), None);
+        assert_eq!(strip("  // indented\n"), None);
+        assert_eq!(strip("/// doc\n"), None);
+        assert_eq!(strip("//text\n"), None);
+        assert_eq!(strip("# a\n# b\n"), None);
+        assert_eq!(strip("/* a */\n"), None);
+
+        // Nothing remains.
+        assert_eq!(strip("//\n//!\n\n"), None);
+        assert_eq!(strip(""), None);
+    }
 
     #[test]
     fn test_same_license_ignores_or_later() {
