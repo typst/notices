@@ -58,7 +58,7 @@ files = [{ path = "LICENSE.txt", checksum = "88abfa95…", start = "rust-lang/li
 
 A release reads the NOTICE files of dependencies, too: items of a dependency's Typst NOTICE file that have no `Package` get the dependency as their package, so their paths are interpreted relative to the package root, which equals the repository root for crates at the root of their repository.
 
-`release` does not check licenses, so run `check --deps` first, for example in the same workflow. It includes the repository's NOTICE file, which it looks for next to the manifest and then in each parent directory up to the workspace root. It fails for dependencies from git repositories, whose licenses are not pinned to a published version. The `--target` option of both commands replaces `targets`.
+`release` does not check licenses, so run `check --deps` first, for example in the same workflow. It includes the repository's NOTICE file, which it looks for next to the manifest and then in each parent directory up to the workspace root. The `--target` option of both commands replaces `targets`.
 
 ## GitHub Action
 

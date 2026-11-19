@@ -33,8 +33,6 @@ pub(super) struct CrateLicenses {
     pub repository: Option<String>,
     /// The directory containing the crate's `Cargo.toml`.
     pub manifest_dir: PathBuf,
-    /// Whether the crate comes from a git repository.
-    pub git: bool,
     /// The licenses the crate is used under.
     ///
     /// If the crate offers a choice of licenses, only the most preferred allowed
@@ -173,7 +171,6 @@ pub(super) fn resolve(
             version: krate.version.clone(),
             repository: krate.repository.clone(),
             manifest_dir: manifest_dir.as_std_path().to_owned(),
-            git: krate.source.as_ref().is_some_and(|s| s.repr.starts_with("git+")),
             licenses,
         });
     }

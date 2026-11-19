@@ -17,8 +17,6 @@ const NOTICE_FILES: [&str; 3] = ["NOTICE", "NOTICE.txt", "NOTICE.md"];
 pub(super) struct Collected {
     pub name: String,
     pub version: String,
-    /// Whether the crate comes from a git repository.
-    pub git: bool,
     /// The blocks for the crate's licenses, with an ordinary notice attached.
     pub blocks: Vec<LicenseBlock>,
     /// The blocks of the crate's Typst NOTICE file, pruned for library use.
@@ -44,7 +42,6 @@ pub(super) fn collect(
             Collected {
                 name: krate.name.clone(),
                 version: krate.version.to_string(),
-                git: krate.git,
                 blocks,
                 typst,
             }

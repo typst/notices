@@ -180,8 +180,7 @@ pub fn check(config: &Config, options: &MetadataOptions) -> anyhow::Result<Repor
 /// merged. Dependencies in [`Config::omit`] are left out.
 ///
 /// This does not check the licenses of the Typst NOTICE files of dependencies,
-/// see [`check`]. Dependencies from git repositories are errors, since their
-/// licenses are not pinned to a published version.
+/// see [`check`].
 ///
 /// The returned blocks can be written with [`crate::write`], which fails if
 /// they cannot be represented in the format. If the report has errors, the
@@ -200,15 +199,13 @@ pub fn release(
     let mut blocks = crate::prune(repo_notice.unwrap_or_default(), Usage::Binary);
 
     for krate in collect::collect(config, options, &mut report)? {
-        if krate.git {
-            report.error(format!(
-                "`{} {}` is a git dependency, which cannot be released",
-                krate.name, krate.version
-            ));
-        } else if !config.omit.contains(&krate.name) {
-            blocks.extend(krate.blocks);
-            blocks.extend(krate.typst);
+        // Omitted crates are not released, so their source does not matter.
+        if config.omit.contains(&krate.name) {
+            continue;
         }
+
+        blocks.extend(krate.blocks);
+        blocks.extend(krate.typst);
     }
 
     Ok((crate::merge(blocks), report))
