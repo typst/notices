@@ -262,9 +262,9 @@ fn license_texts(krate_license: &KrateLicense, req: &LicenseReq) -> Vec<String> 
         if !applies(&file.license, &req.license) {
             continue;
         }
-        let text = strip_comment_markers(text).unwrap_or_else(|| text.clone());
-        if !texts.contains(&text) {
-            texts.push(text);
+        let stripped = strip_comment_markers(text);
+        if !texts.contains(stripped.as_ref().unwrap_or(text)) {
+            texts.push(stripped.unwrap_or_else(|| text.clone()));
         }
     }
 

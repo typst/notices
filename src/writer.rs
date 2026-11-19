@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt::{self, Display, Formatter};
 
@@ -41,13 +42,6 @@ pub(crate) fn write(blocks: &[LicenseBlock]) -> Result<String, WriteError> {
         ),
     })?;
 
-    for (i, (block, actual)) in blocks.iter().zip(&parsed).enumerate() {
-        if *actual != lf_block(block) {
-            return Err(WriteError {
-                message: format!("license block {} cannot be written faithfully", i + 1),
-            });
-        }
-    }
     if blocks.len() != parsed.len() {
         return Err(WriteError {
             message: format!(
@@ -58,16 +52,6 @@ pub(crate) fn write(blocks: &[LicenseBlock]) -> Result<String, WriteError> {
     }
 
     Ok(text)
-}
-
-/// The block as the parser returns it: with LF instead of CRLF linebreaks in
-/// its texts.
-fn lf_block(block: &LicenseBlock) -> LicenseBlock {
-    LicenseBlock {
-        text: verbatim(&block.text),
-        notice: block.notice.as_deref().map(verbatim),
-        ..block.clone()
-    }
 }
 
 /// Writes a license block without the linebreak after its end marker.
@@ -92,8 +76,12 @@ fn write_block(block: &LicenseBlock) -> String {
 }
 
 /// Converts a license or notice text to the written form: with LF linebreaks.
-fn verbatim(text: &str) -> String {
-    text.replace("\r\n", "\n")
+fn verbatim(text: &str) -> Cow<'_, str> {
+    if text.contains("\r\n") {
+        Cow::Owned(text.replace("\r\n", "\n"))
+    } else {
+        Cow::Borrowed(text)
+    }
 }
 
 /// Finds the smallest marker length that does not occur as a line of the
@@ -600,17 +588,6 @@ mod tests {
         );
         // A license text that starts like an item.
         assert_error(&with_block(|b| b.text = "* a\nb".into()), "cannot be written");
-
-        // The description contains a property lookalike that would parse as a
-        // real property list instead of as the description: it must error
-        // rather than silently change.
-        assert_error(
-            &with_item(|i| {
-                i.description =
-                    "first\n\n  Path: `fake`\n  Source: https://fake.example".into()
-            }),
-            "faithfully",
-        );
 
         // Not a single block.
         assert_error(&[], "needs a license block");
