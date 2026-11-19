@@ -1,6 +1,6 @@
 [package]
 name = "notices"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/typst/notices"
@@ -13,15 +13,7 @@ cli = ["dep:clap", "serde"]
 serde = ["dep:serde", "dep:serde_json"]
 # Checks and collects the licenses of a Cargo dependency tree with
 # `cargo-about`.
-cargo = [
-    "dep:anyhow",
-    "dep:cargo-about",
-    "dep:krates",
-    "dep:serde",
-    "dep:toml",
-    "dep:toml-span",
-    "spdx/text",
-]
+cargo = ["dep:anyhow", "dep:cargo-about", "dep:krates", "dep:serde", "dep:toml", "dep:toml-span", "spdx/text"]
 
 [[bin]]
 name = "notices"
