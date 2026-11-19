@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 pub use self::config::{
     CONFIG_PATH, Clarification, ClarificationFile, Config, Exception, Private,
+    find_in_workspace,
 };
 
 use crate::{LicenseBlock, Usage};

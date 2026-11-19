@@ -5,14 +5,15 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use notices::ErrorKind;
-use notices::cargo::release;
+use notices::cargo::{find_in_workspace, release};
 
 use super::ProjectArgs;
 
 /// Writes the NOTICE file and JSON document for a release of a Cargo project.
 ///
 /// Merges the licenses of all dependencies with the project's own NOTICE file,
-/// which is `NOTICE` next to the manifest, if there is one.
+/// if there is one. It is the first file named `NOTICE` in the directory of the
+/// manifest or a parent directory up to the workspace root.
 #[derive(Parser)]
 pub struct Args {
     /// Where to write the licenses. Can be repeated or separated by commas.
@@ -41,8 +42,10 @@ pub fn run(args: &Args) -> ExitCode {
 fn write(args: &Args) -> Result<bool, String> {
     let (config, options) = args.project.load(Path::new("."))?;
 
-    let notice = options.manifest_path.with_file_name("NOTICE");
-    let repo_notice = if notice.is_file() { Some(read_notice(&notice)?) } else { None };
+    let repo_notice = match find_in_workspace(&options.manifest_path, "NOTICE") {
+        Some(path) => Some(read_notice(&path)?),
+        None => None,
+    };
 
     let (blocks, report) =
         release(repo_notice, &config, &options).map_err(|e| format!("{e:#}"))?;
