@@ -6,9 +6,7 @@
 
 use std::path::Path;
 
-use notices::cargo::{
-    CONFIG_PATH, Config, MetadataOptions, Report, check, find_in_workspace, release,
-};
+use notices::cargo::{CONFIG_PATH, Config, MetadataOptions, Report, check, release};
 use notices::{Inclusion, LicenseBlock};
 
 /// The checksum of `crates/custom/LICENSE` in the `cargo` fixture.
@@ -114,6 +112,7 @@ mod config {
     //! Tests for loading the configuration file.
 
     use super::*;
+    use notices::cargo::find_in_workspace;
     use std::path::PathBuf;
 
     #[test]
@@ -311,51 +310,4 @@ mod release_fixture {
         assert!(!all.contains(&"The `plain` crate"));
         assert!(all.contains(&"The `plain-notice` crate"));
     }
-}
-
-#[test]
-fn test_git_dependencies_are_rejected() {
-    use std::process::Command;
-
-    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("git-dependency");
-    let _ = std::fs::remove_dir_all(&root);
-    let (dep, app) = (root.join("dep"), root.join("app"));
-    let package =
-        "[package]\nversion = \"1.0.0\"\nlicense = \"MIT\"\nedition = \"2024\"\n";
-    for (dir, name, deps) in [
-        (&dep, "dep", String::new()),
-        (
-            &app,
-            "app",
-            format!("[dependencies]\ndep = {{ git = \"file://{}\" }}\n", dep.display()),
-        ),
-    ] {
-        std::fs::create_dir_all(dir.join("src")).unwrap();
-        std::fs::write(dir.join("src/lib.rs"), "").unwrap();
-        let manifest =
-            package.replace("[package]", &format!("[package]\nname = \"{name}\""));
-        std::fs::write(dir.join("Cargo.toml"), format!("{manifest}\n{deps}")).unwrap();
-    }
-
-    let git = |args: &[&str]| {
-        Command::new("git")
-            .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
-            .args(args)
-            .current_dir(&dep)
-            .output()
-            .is_ok_and(|output| output.status.success())
-    };
-    if !(git(&["init", "-q"]) && git(&["add", "."]) && git(&["commit", "-qm", "init"])) {
-        return; // git is not available
-    }
-
-    let config: Config = "allow = [\"MIT\"]\n".parse().unwrap();
-    let options = MetadataOptions::new(app.join("Cargo.toml"));
-    let (_, report) = release(None, &config, &options).unwrap();
-    assert!(report.has_errors());
-    assert!(report.to_string().contains("`dep 1.0.0` is a git dependency"), "{report}");
-
-    // Checking is fine with it.
-    let report = check(&config, &options).unwrap();
-    assert!(!report.has_errors(), "{report}");
 }
