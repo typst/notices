@@ -38,7 +38,7 @@ jobs:
             echo "::error::The default of the version input in action.yml is $default, expected $GITHUB_REF_NAME"
             exit 1
           fi
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@d5e4d57b030548f435d0befec15ff413a2c60eff # v1.100.0
       # The binary links dynamically against the glibc of the build image, so
       # it needs glibc 2.35 or newer. That covers GitHub-hosted runners, but
       # not older container images.
@@ -58,7 +58,7 @@ jobs:
         run: |
           target/release/notices check --deps --allow-missing --locked --features cargo,serde
           target/release/notices release --locked --features cargo,serde -o dist/NOTICE,dist/NOTICE.json
-      - name: Upload asset
+      - name: Upload NOTICE files
         if: matrix.asset == 'notices-linux-x86_64'
         shell: bash
         env:
@@ -66,8 +66,25 @@ jobs:
         run: |
           gh release upload $VERSION "dist/NOTICE"
           gh release upload $VERSION "dist/NOTICE.json"
-      - name: Upload asset
+      - name: Upload binaries
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload $VERSION "dist/${{ matrix.asset }}"
+
+  # The action verifies the downloaded binary against `SHA256SUMS`, which needs
+  # all binaries, so it is created once every build has uploaded its asset.
+  checksums:
+    name: Upload checksums
+    needs: build
+    runs-on: ubuntu-slim
+    steps:
+      - name: Create and upload SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --dir dist --pattern 'notices-*'
+          cd dist
+          sha256sum notices-* > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$VERSION" SHA256SUMS --repo "$GITHUB_REPOSITORY"
