@@ -4,3 +4,29 @@ targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "aarch64-app
 
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
+
+# `ring` has license headers in its source files that `cargo-about` would
+# otherwise pick up file by file, see
+# https://github.com/EmbarkStudios/cargo-about/issues/316.
+[clarify.ring]
+license = "Apache-2.0 AND ISC"
+files = [
+    { path = "LICENSE-BoringSSL", license = "Apache-2.0", start = "Apache License", end = "END OF TERMS AND CONDITIONS", checksum = "4bf96504d6e83ce5c6fc7167f1795d9ceaa68e70ab86bc5d08ab93184262bbbe" },
+    { path = "LICENSE-other-bits", license = "ISC", checksum = "f025ccfb7dfb6bdfedc75ca0f67acc69e6fb4998143d834f7c2f38a29989680f" },
+    # Google Inc.
+    { path = "src/aead/gcm/fallback.rs", license = "ISC", start = "// Copyright", end = "THIS SOFTWARE.", checksum = "408bc1b7dbc5e6542dcb5af61db43a843e02240a38c9563905942b90d8890052" },
+    # Intel Corporation. Only C files carry this notice, so it stays a `/* */` comment.
+    { path = "crypto/fipsmodule/ec/ecp_nistz.c", license = "ISC", start = "/* Copyright", end = "THIS SOFTWARE. */", checksum = "1f6e55e48a7dc93660e034e5c72572e464353ebe46b7af6ae5c065e55277ff25" },
+    # Trent Clarke
+    { path = "src/debug.rs", license = "ISC", start = "// Copyright", end = "THIS SOFTWARE.", checksum = "8f124a95cebfb8dbd3bbfe25c9a31218c948c5c9f0865be107777823fcc545e0" },
+    # Simon Sapin
+    { path = "src/digest/sha1.rs", license = "ISC", start = "// Copyright", end = "THIS SOFTWARE.", checksum = "77b710d261c2c63e6cd50842955212a9b9e2b8e8d4138beab3288137d900562f" },
+    # David Judd
+    { path = "src/limb.rs", license = "ISC", start = "// Copyright", end = "THIS SOFTWARE.", checksum = "22e2692e264302a992ec1511f78e2e29fb2eadc8df82c75364f85ab679a6af85" },
+]
+
+# `spdx` ships the texts of all SPDX licenses as Rust raw string literals in
+# `src/text`, which `cargo-about` mistakes for license files of the crate.
+[clarify.spdx]
+license = "Apache-2.0"
+files = [{ path = "LICENSE-APACHE", checksum = "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90" }]
