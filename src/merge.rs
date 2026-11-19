@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use spdx::{LicenseItem, LicenseReq};
 
@@ -13,6 +14,10 @@ const APACHE_APPENDIX: &str = "APPENDIX: How to apply the Apache License";
 
 /// The last line of the Apache 2.0 License's appendix.
 const APACHE_APPENDIX_END: &str = "limitations under the License.";
+
+/// The last line of the instructions in the Apache 2.0 License's appendix. Some
+/// copies end there and leave out the boilerplate notice that follows.
+const APACHE_APPENDIX_INSTRUCTIONS_END: &str = "within third-party archives.";
 
 /// How a repository is used by a downstream consumer.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -57,10 +62,10 @@ pub fn prune(
 /// - Linebreaks become LF.
 /// - Empty lines at the start and whitespace at the end are removed.
 /// - The appendix of the Apache 2.0 License is removed if the text ends with
-///   it. Texts that continue after the appendix, like the one of the LLVM
-///   exception, are kept whole.
-/// - Lines longer than 80 columns are wrapped at spaces. Continuation lines keep
-///   the indentation of the line. Short lines are never joined, as their
+///   it, with or without its boilerplate notice. Texts that continue after the
+///   appendix, like the one of the LLVM exception, are kept whole.
+/// - Lines longer than 80 columns are wrapped at spaces. Continuation lines
+///   keep the indentation of the line. Short lines are never joined, as their
 ///   linebreaks may be significant.
 pub fn normalize_text(license: &LicenseReq, text: &str) -> String {
     let text = text.replace("\r\n", "\n");
@@ -79,21 +84,22 @@ pub fn normalize_text(license: &LicenseReq, text: &str) -> String {
 
 /// Merges license blocks that can share a text.
 ///
-/// Blocks are merged if they have the same license, the same notice, and license
-/// texts that are equal up to whitespace (see [`normalize_text`] for how texts
-/// are brought into shape). The merged block has the text of the first block of
-/// its group and all items of the group, without exact duplicates. The result
-/// is ordered by the first appearance of each group.
+/// Blocks are merged if they have the same license, the same notice, and
+/// license texts that are equal up to whitespace and the scheme of `http` and
+/// `https` URLs. The merged block has the text of the first block of its group
+/// and all items of the group, without exact duplicates. The result is ordered
+/// by the first appearance of each group.
 pub fn merge(blocks: impl IntoIterator<Item = LicenseBlock>) -> Vec<LicenseBlock> {
     let mut merged: Vec<LicenseBlock> = Vec::new();
-    let mut groups: HashMap<GroupKey, usize> = HashMap::new();
+    // The indices of the merged blocks by the hash of their group.
+    let mut groups: HashMap<u64, usize> = HashMap::new();
 
     for mut block in blocks {
         block.text = normalize_text(&block.license.req, &block.text);
         block.notice = block.notice.as_deref().and_then(normalize_notice);
 
         let items = std::mem::take(&mut block.items);
-        let index = *groups.entry(GroupKey::new(&block)).or_insert_with(|| {
+        let index = *groups.entry(group_hash(&block)).or_insert_with(|| {
             merged.push(block);
             merged.len() - 1
         });
@@ -109,26 +115,30 @@ pub fn merge(blocks: impl IntoIterator<Item = LicenseBlock>) -> Vec<LicenseBlock
     merged
 }
 
-/// What license blocks must have in common to be merged.
-#[derive(Debug, PartialEq, Eq, Hash)]
-struct GroupKey {
-    /// The license as written in the license marker.
-    license: String,
-    /// The words of the license text, separated by single spaces.
-    words: String,
-    /// The notice, normalized.
-    notice: Option<String>,
+/// Hashes what license blocks must have in common to be merged: the license as
+/// written in the license marker, the [`words`] of the license text, and the
+/// notice.
+fn group_hash(block: &LicenseBlock) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    block.license.to_string().hash(&mut hasher);
+    for word in words(&block.text) {
+        word.hash(&mut hasher);
+    }
+    block.notice.hash(&mut hasher);
+    hasher.finish()
 }
 
-impl GroupKey {
-    /// Creates the key of a block with a normalized text and notice.
-    fn new(block: &LicenseBlock) -> Self {
-        Self {
-            license: block.license.to_string(),
-            words: block.text.split_whitespace().collect::<Vec<_>>().join(" "),
-            notice: block.notice.clone(),
-        }
-    }
+/// The words of a license text, with the scheme of `http://` URLs split off so
+/// that they equal `https://` URLs.
+fn words(text: &str) -> impl Iterator<Item = (&str, &str)> {
+    text.split_whitespace()
+        .map(|word| match word.strip_prefix("http://") {
+            Some(rest) => ("https://", rest),
+            None => match word.strip_prefix("https://") {
+                Some(rest) => ("https://", rest),
+                None => ("", word),
+            },
+        })
 }
 
 /// Brings a notice into a canonical form: LF linebreaks and no empty lines at
@@ -165,7 +175,8 @@ pub(crate) fn is_apache(license: &LicenseReq) -> bool {
 ///
 /// The text must end with the appendix to be shortened: the appendix heading
 /// must come right after the line that ends the terms and the last line of the
-/// text must be the last line of the appendix. Texts that continue after the
+/// text must be the last line of the appendix, or of its instructions if the
+/// boilerplate notice is left out. Texts that continue after the
 /// appendix, like the one of the LLVM exception, are not cut because the
 /// additional terms behind the appendix cannot be told apart from it.
 fn strip_apache_appendix(text: &str) -> &str {
@@ -173,7 +184,9 @@ fn strip_apache_appendix(text: &str) -> &str {
     for line in text.split('\n') {
         if line.trim_start().starts_with(APACHE_APPENDIX) {
             let terms = text[..offset].trim_end();
-            let ends_text = text.trim_end().ends_with(APACHE_APPENDIX_END);
+            let end = text.trim_end();
+            let ends_text = end.ends_with(APACHE_APPENDIX_END)
+                || end.ends_with(APACHE_APPENDIX_INSTRUCTIONS_END);
             let ends_terms =
                 terms.lines().next_back().is_some_and(|l| l.trim() == APACHE_END);
             return if ends_text && ends_terms { terms } else { text };
@@ -362,6 +375,16 @@ mod tests {
             normalize_text(&req("Apache-2.0 WITH LLVM-exception"), &with_appendix),
             normalize_text(&apache, &text),
         );
+        // Some copies end after the instructions, without the boilerplate.
+        let without_boilerplate = format!(
+            "{text}\n\n    APPENDIX: How to apply the Apache License to your work.\n\n\
+             \x20     Instructions for easier\n      identification within \
+             third-party archives.\n"
+        );
+        assert_eq!(
+            normalize_text(&apache, &without_boilerplate),
+            normalize_text(&apache, &text)
+        );
         // Other licenses have no appendix to strip.
         assert!(normalize_text(&req("MIT"), &with_appendix).contains("APPENDIX"));
         // Without the end of the terms nothing is cut.
@@ -407,6 +430,20 @@ mod tests {
         assert_eq!(merged.len(), 1);
         assert_eq!(descriptions(&merged[0]), ["a", "b"]);
         assert_eq!(merged[0].text, "Permission is\nhereby granted");
+    }
+
+    #[test]
+    fn test_merge_groups_url_schemes() {
+        let blocks = [
+            block("MIT", vec![item("a", Inclusion::Always)], "See http://example.com/"),
+            block("MIT", vec![item("b", Inclusion::Always)], "See https://example.com/"),
+            block("MIT", vec![item("c", Inclusion::Always)], "See ftp://example.com/"),
+        ];
+        let merged = merge(blocks);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(descriptions(&merged[0]), ["a", "b"]);
+        // The text of the first block is kept.
+        assert_eq!(merged[0].text, "See http://example.com/");
     }
 
     #[test]
