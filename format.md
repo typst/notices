@@ -130,3 +130,14 @@ The `Notice` key must be populated whenever a license requires reproduction of a
 2. Copyright notices in code file headers
 3. Authors key in the package manifest
 4. GitHub username or other identifier
+
+### Known `LicenseRef-` identifiers
+
+In Typst projects, some licenses not assigned an SPDX identifier are common. Therefore, we are using standard `LicenseRef-` identifiers and names for some licenses:
+
+| SPDX Identifier                   | Name                              | URL                                                                                   | Notes                                                                                                                                                                                                  |
+|:----------------------------------|:----------------------------------|:--------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LicenseRef-LPPL-1.3`             | LaTeX Project Public License 1.3  | https://www.latex-project.org/lppl/lppl-1-3.txt                                       | Version 3 has some alphabetical minor revisions (a and c) with an assigned SPDX identifier. Most LPPL project allow upgrading to a later version of the license. In that case, prefer the `LPPL-1.3c`. |
+| `LicenseRef-GUST-Font-License`    | GUST Font License                 | https://www.gust.org.pl/fonts/licenses/GUST-FONT-LICENSE.txt                          |                                                                                                                                                                                                        |
+| `LicenseRef-DejaVu-Fonts-License` | DejaVu Fonts License              | https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/refs/heads/master/LICENSE | Don't confuse with `Bitstream-Vera`                                                                                                                                                                    |
+| `LicenseRef-Unsplash-License`     | Unsplash License                  | https://unsplash.com/license                                                          |                                                                                                                                                                                                        |
