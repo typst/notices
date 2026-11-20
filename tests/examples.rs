@@ -17,7 +17,7 @@ fn test_examples_parse() {
     assert_eq!(shape(HAYAGRIVA), [3]);
     assert_eq!(shape(PIXGLYPH), [3, 4]);
     assert_eq!(shape(CITATIONBERG), [2]);
-    assert_eq!(shape(TYPST).len(), 7);
+    assert_eq!(shape(TYPST).len(), 6);
 }
 
 #[test]
@@ -36,13 +36,9 @@ fn test_example_details() {
     );
 
     let blocks = parse(TYPST).unwrap();
-    let lppl = &blocks[4].license;
-    assert_eq!(
-        lppl.to_string(),
-        "LicenseRef-LPPL-1.3 (LaTeX Project Public License 1.3)"
-    );
-    assert_eq!(lppl.name.as_deref(), Some("LaTeX Project Public License 1.3"));
-    let llvm = &blocks[6];
+    let bsd = &blocks[4].license;
+    assert_eq!(bsd.to_string(), "BSD-3-Clause");
+    let llvm = &blocks[5];
     assert_eq!(llvm.license.req.to_string(), "Apache-2.0 WITH LLVM-exception");
     // The license text may start with a line that looks like a marker.
     assert!(llvm.text.lines().next().unwrap().chars().all(|c| c == '='));
@@ -90,7 +86,7 @@ fn test_json() {
     let json = notices::to_json(&parse(TYPST).unwrap());
     let value: Value = serde_json::from_str(&json).unwrap();
     let item = &value["blocks"][4]["items"][0];
-    assert_eq!(value["blocks"][4]["license"]["name"], "LaTeX Project Public License 1.3");
+    assert_eq!(value["blocks"][3]["license"]["req"], "LPPL-1.3c");
     assert_eq!(item["package"], Value::Null);
     assert_eq!(item["inclusion"], "always");
 }
