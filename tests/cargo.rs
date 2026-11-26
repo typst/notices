@@ -73,6 +73,21 @@ fn test_clarifications() {
     assert!(report.has_errors());
     assert!(output.contains("clarification for `custom 1.0.0` is outdated"), "{output}");
     assert!(output.contains("checksum mismatch"), "{output}");
+
+    // A clarification is only verified for the versions it is meant for.
+    let outdated = clarify_custom(&"0".repeat(64));
+    let config =
+        format!("{allow}{}", outdated.replace("\nfiles", "\nversion = \"^2\"\nfiles"));
+    let (report, output) = check_fixture("cargo", &[], &config);
+    assert!(!output.contains("is outdated"), "{output}");
+    // Without it, the license of `custom 1.0.0` is still unknown.
+    assert!(report.has_errors() && output.contains("custom"), "{output}");
+
+    let valid = clarify_custom(CUSTOM_CHECKSUM);
+    let config =
+        format!("{allow}{}", valid.replace("\nfiles", "\nversion = \"^1\"\nfiles"));
+    let (report, output) = check_fixture("cargo", &[], &config);
+    assert!(!report.has_errors(), "{output}");
 }
 
 #[test]
@@ -148,6 +163,21 @@ mod config {
         let err = "allow = [\"MIT\"]\nalow = 1\n".parse::<Config>().unwrap_err();
         assert!(err.contains("unknown field `alow`"), "{err}");
         assert!("allow = []\n".parse::<Config>().unwrap_err().contains("at least one"));
+
+        let clarify = "allow = [\"MIT\"]\n[clarify.a]\nlicense = \"MIT\"\nfiles = []\n";
+        let config: Config =
+            clarify.replace("files", "version = \"^0.6\"\nfiles").parse().unwrap();
+        let a = &config.clarify["a"];
+        assert!(a.applies_to(&"0.6.1".parse().unwrap()));
+        assert!(!a.applies_to(&"0.5.5".parse().unwrap()));
+        assert!(
+            clarify.parse::<Config>().unwrap().clarify["a"]
+                .applies_to(&"9.0.0".parse().unwrap())
+        );
+        let err = clarify
+            .replace("files", "version = \"latest\"\nfiles")
+            .parse::<Config>();
+        assert!(err.unwrap_err().contains("version"));
     }
 
     /// Creates a package with a configuration file two levels above it.

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use krates::semver::{Version, VersionReq};
 use serde::{Deserialize, Deserializer, de::Error};
 use spdx::{Expression, Licensee};
 
@@ -135,16 +136,33 @@ pub struct Exception {
 /// The clarification only applies as long as the checksums of its files match,
 /// so it is not applied by accident if the crate's license changes. The format
 /// and semantics are those of the same-named setting of `cargo-about`, except
-/// that it applies to all versions of the crate.
+/// that it applies to all versions of the crate unless restricted with
+/// [`version`](Self::version).
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Clarification {
+    /// The versions of the crate the clarification is verified for, e.g.
+    /// `^0.6`. All versions if unset.
+    ///
+    /// Other versions are left to the automatic detection. Since `cargo-about`
+    /// matches clarifications by crate name, it still applies the
+    /// clarification to another version if all of its checksums match there,
+    /// i.e. if the license files are the same.
+    #[serde(default, deserialize_with = "optional_version_req")]
+    pub version: Option<VersionReq>,
     /// The license expression of the crate, as if it was written in its
     /// `Cargo.toml`.
     #[serde(deserialize_with = "expression")]
     pub license: Expression,
     /// Files in the published crate that prove the license.
     pub files: Vec<ClarificationFile>,
+}
+
+impl Clarification {
+    /// Whether the clarification is meant for the given version of the crate.
+    pub fn applies_to(&self, version: &Version) -> bool {
+        self.version.as_ref().is_none_or(|req| req.matches(version))
+    }
 }
 
 /// A file whose checksum is the ground truth for a [`Clarification`].
@@ -187,6 +205,15 @@ fn optional_expression<'de, D: Deserializer<'de>>(
         Some(text) => Expression::parse_mode(&text, MODE)
             .map(Some)
             .map_err(D::Error::custom),
+        None => Ok(None),
+    }
+}
+
+fn optional_version_req<'de, D: Deserializer<'de>>(
+    de: D,
+) -> Result<Option<VersionReq>, D::Error> {
+    match Option::<String>::deserialize(de)? {
+        Some(text) => text.parse().map(Some).map_err(D::Error::custom),
         None => Ok(None),
     }
 }
