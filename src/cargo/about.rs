@@ -339,8 +339,8 @@ fn same_license(a: &LicenseItem, b: &LicenseItem) -> bool {
 
 /// Verifies the clarifications against the crates in the dependency tree.
 ///
-/// Returns the clarifications that hold for all versions of their crate.
-/// Outdated ones are reported as errors.
+/// Returns the clarifications that hold for all versions of their crate that
+/// they are meant for. Outdated ones are reported as errors.
 ///
 /// `cargo-about` only logs a warning if a checksum does not match and then
 /// silently falls back to another license text. To make this an error, the
@@ -355,7 +355,9 @@ pub(super) fn verify<'a>(
 
     for (name, clarification) in &config.clarify {
         let mut holds = true;
-        for krate in krates.krates().filter(|krate| krate.name == *name) {
+        for krate in krates.krates().filter(|krate| {
+            krate.name == *name && clarification.applies_to(&krate.version)
+        }) {
             let dir = krate.manifest_path.parent().unwrap_or(&krate.manifest_path);
             for file in &clarification.files {
                 let result = std::fs::read_to_string(dir.join(&file.path))

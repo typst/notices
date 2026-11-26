@@ -50,8 +50,9 @@ allow = ["CC-BY-SA-3.0"]
 
 # States the license of a crate whose license cannot be detected correctly
 # automatically. Only applies while the checksums of the files match, for all
-# versions of the crate.
+# versions of the crate or those matching `version`.
 [clarify.libm]
+version = "^0.2"
 license = "MIT"
 files = [{ path = "LICENSE.txt", checksum = "88abfa95…", start = "rust-lang/libm as a whole", end = "SOFTWARE." }]
 ```
