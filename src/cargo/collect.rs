@@ -1,8 +1,11 @@
 //! Collects the license blocks for the dependencies of a Cargo project.
 
+use std::path::{Component, Path};
+
 use spdx::LicenseItem;
 
 use super::about::{self, CrateLicenses, LicenseText};
+use super::config::workspace_root;
 use super::{Config, MetadataOptions, Report, Severity};
 use crate::merge::is_apache;
 use crate::rules::has_scheme;
@@ -12,6 +15,10 @@ use crate::{ErrorKind, Inclusion, Item, License, LicenseBlock, Package, Usage};
 ///
 /// Only the first can be a Typst NOTICE file.
 const NOTICE_FILES: [&str; 3] = ["NOTICE", "NOTICE.txt", "NOTICE.md"];
+
+/// Files that Cargo puts into the directories of packaged crates: those
+/// extracted from a registry and those vendored with `cargo vendor`.
+const PACKAGE_MARKERS: [&str; 2] = [".cargo-ok", ".cargo-checksum.json"];
 
 /// The license blocks of a dependency.
 pub(super) struct Collected {
@@ -34,10 +41,12 @@ pub(super) fn collect(
     report: &mut Report,
 ) -> anyhow::Result<Vec<Collected>> {
     let crates = about::resolve(config, options, report)?;
+    let project = std::path::absolute(&options.manifest_path)?;
+    let project_root = project.parent().and_then(workspace_root);
     Ok(crates
         .iter()
         .map(|krate| {
-            let mut collector = Collector { krate, report: &mut *report };
+            let mut collector = Collector { krate, project_root, report: &mut *report };
             let (blocks, typst) = collector.blocks();
             Collected {
                 name: krate.name.clone(),
@@ -52,6 +61,9 @@ pub(super) fn collect(
 /// Collects the blocks of a single crate.
 struct Collector<'a> {
     krate: &'a CrateLicenses,
+    /// The root of the project's workspace, whose NOTICE file is never a
+    /// dependency's.
+    project_root: Option<&'a Path>,
     report: &'a mut Report,
 }
 
@@ -129,6 +141,11 @@ impl Collector<'_> {
 
     /// Reads the NOTICE files of the crate.
     ///
+    /// They are searched in the crate's directory and, if there are none, at
+    /// the root of its workspace, e.g. for a crate from a Git repository with
+    /// several crates. Packaged crates, e.g. from a registry or vendored, are
+    /// self-contained, so their parent directories are not searched.
+    ///
     /// Returns the text of the ordinary notice to include, if any, and the
     /// blocks of the Typst NOTICE file, pruned for library use.
     fn notices(&mut self) -> (Option<String>, Vec<LicenseBlock>) {
@@ -136,8 +153,24 @@ impl Collector<'_> {
         let mut ordinary = Vec::new();
         let mut typst = Vec::new();
 
+        let manifest_dir = self.krate.manifest_dir.as_path();
+        let has_notice =
+            |dir: &Path| NOTICE_FILES.iter().any(|name| dir.join(name).is_file());
+        let packaged =
+            PACKAGE_MARKERS.iter().any(|name| manifest_dir.join(name).is_file());
+        let root = workspace_root(manifest_dir).filter(|&root| {
+            root != manifest_dir
+                && Some(root) != self.project_root
+                && !packaged
+                && !has_notice(manifest_dir)
+        });
+        let (dir, within) = match root {
+            Some(root) => (root, Some(relative(manifest_dir, root))),
+            None => (manifest_dir, None),
+        };
+
         for (i, name) in NOTICE_FILES.into_iter().enumerate() {
-            let path = self.krate.manifest_dir.join(name);
+            let path = dir.join(name);
             if !path.is_file() {
                 continue;
             }
@@ -156,7 +189,7 @@ impl Collector<'_> {
             if i == 0 {
                 match crate::parse(&text) {
                     Ok(blocks) => {
-                        typst = self.with_package(blocks);
+                        typst = self.with_package(blocks, within.as_deref());
                         continue;
                     }
                     Err(err) if err.kind == ErrorKind::MissingHeader => {}
@@ -190,8 +223,25 @@ impl Collector<'_> {
     /// Items without a package get the dependency, so their paths are read
     /// relative to the package root. That equals the repository root for crates
     /// at the root of their repository.
-    fn with_package(&self, blocks: Vec<LicenseBlock>) -> Vec<LicenseBlock> {
+    ///
+    /// If the file is at the root of the crate's workspace, the crate is in the
+    /// directory `within` relative to it. Then, only the items with paths in
+    /// that directory or without paths are kept, with their paths made relative
+    /// to the crate.
+    fn with_package(
+        &self,
+        blocks: Vec<LicenseBlock>,
+        within: Option<&str>,
+    ) -> Vec<LicenseBlock> {
         let mut blocks = crate::prune(blocks, Usage::Library);
+        if let Some(within) = within {
+            for block in &mut blocks {
+                block.items.retain_mut(|item| {
+                    item.package.is_some() || in_crate(&mut item.paths, within)
+                });
+            }
+            blocks.retain(|block| !block.items.is_empty());
+        }
         for item in blocks.iter_mut().flat_map(|block| &mut block.items) {
             item.package.get_or_insert_with(|| self.package());
         }
@@ -212,5 +262,73 @@ impl Collector<'_> {
         let krate = self.krate;
         self.report
             .warning(format!("`{} {}`: {message}", krate.name, krate.version));
+    }
+}
+
+/// The path of a directory relative to an ancestor, with `/` as separator, as
+/// in NOTICE files.
+fn relative(dir: &Path, ancestor: &Path) -> String {
+    let rest = dir.strip_prefix(ancestor).unwrap_or(dir);
+    let parts: Vec<_> = rest
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy()),
+            _ => None,
+        })
+        .collect();
+    parts.join("/")
+}
+
+/// Restricts the paths of an item of a workspace's NOTICE file, which are
+/// relative to the workspace root, to those in the crate's directory `within`
+/// and makes them relative to it.
+///
+/// Returns whether the item applies to the crate: if it has no paths, one of
+/// its paths is in the crate, or one is the crate's directory. In the latter
+/// case, the item applies to the whole crate and has no paths.
+fn in_crate(paths: &mut Vec<String>, within: &str) -> bool {
+    if paths.is_empty() {
+        return true;
+    }
+
+    let mut whole = false;
+    paths.retain_mut(|path| {
+        let Some(rest) = path.strip_prefix(within) else { return false };
+        if rest.is_empty() || rest == "/" {
+            whole = true;
+            return false;
+        }
+        match rest.strip_prefix('/') {
+            Some(rest) => {
+                *path = rest.to_owned();
+                true
+            }
+            None => false,
+        }
+    });
+
+    if whole {
+        paths.clear();
+    }
+    whole || !paths.is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_in_crate() {
+        let check = |paths: &[&str], keep: bool, expected: &[&str]| {
+            let mut paths = paths.iter().map(|&path| path.to_owned()).collect();
+            assert_eq!(in_crate(&mut paths, "crates/a"), keep);
+            assert_eq!(paths, expected);
+        };
+        check(&[], true, &[]);
+        check(&["crates/a/src/x.rs", "crates/b/y.rs"], true, &["src/x.rs"]);
+        check(&["crates/a/data/"], true, &["data/"]);
+        check(&["crates/ab/x.rs", "crates/b/"], false, &[]);
+        check(&["crates/a/x.rs", "crates/a/"], true, &[]);
+        check(&["crates/a"], true, &[]);
     }
 }

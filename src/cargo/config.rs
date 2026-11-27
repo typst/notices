@@ -103,13 +103,25 @@ pub fn find_in_workspace(manifest_path: &Path, relative: &str) -> Option<PathBuf
             return Some(candidate);
         }
 
-        let manifest = std::fs::read_to_string(dir.join("Cargo.toml"));
-        let table = manifest.ok().and_then(|text| text.parse::<toml::Table>().ok());
-        if table.is_some_and(|table| table.contains_key("workspace")) {
+        if is_workspace_root(dir) {
             break;
         }
     }
     None
+}
+
+/// Finds the root of the workspace that the directory belongs to, i.e. the
+/// directory itself or the first parent directory whose `Cargo.toml` has a
+/// `[workspace]` table.
+pub(super) fn workspace_root(dir: &Path) -> Option<&Path> {
+    dir.ancestors().find(|dir| is_workspace_root(dir))
+}
+
+/// Whether the `Cargo.toml` in the directory has a `[workspace]` table.
+fn is_workspace_root(dir: &Path) -> bool {
+    let manifest = std::fs::read_to_string(dir.join("Cargo.toml"));
+    let table = manifest.ok().and_then(|text| text.parse::<toml::Table>().ok());
+    table.is_some_and(|table| table.contains_key("workspace"))
 }
 
 /// Configures which crates are private and thus not checked.
