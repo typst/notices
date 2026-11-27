@@ -15,7 +15,7 @@ inputs:
       The release of `notices` to download. Defaults to the release this
       version of the action belongs to.
     # Bumped together with every release.
-    default: v0.1.4
+    default: v0.1.5
   token:
     description: >
       A token with read access to the releases of the repository.
