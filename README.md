@@ -69,7 +69,7 @@ license = "BSD-2-Clause"
 files = [{ path = "LICENSE", checksum = "17c496a7…" }]
 ```
 
-A release reads the NOTICE files of dependencies, too: items of a dependency's Typst NOTICE file that have no `Package` get the dependency as their package, so their paths are interpreted relative to the package root, which equals the repository root for crates at the root of their repository.
+A release reads the NOTICE files of dependencies, too: items of a dependency's Typst NOTICE file that have no `Package` get the dependency as their package, so their paths are interpreted relative to the package root, which equals the repository root for crates at the root of their repository. If a dependency has no NOTICE file but the root of its workspace does, e.g. for a crate from a Git repository with several crates, that file is used. Of a Typst NOTICE file there, only the items with paths in the crate's directory, without paths, or naming a package are kept, and paths in the crate's directory are made relative to it. Packaged crates, e.g. from a registry, are self-contained and never use a NOTICE file of a parent directory.
 
 `release` does not check licenses, so run `check --deps` first, for example in the same workflow. It includes the repository's NOTICE file, which it looks for next to the manifest and then in each parent directory up to the workspace root. The `--target` option of both commands replaces `targets`.
 
