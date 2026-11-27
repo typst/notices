@@ -38,6 +38,19 @@ fn clarify_custom(checksum: &str) -> String {
     )
 }
 
+/// Clarifications of the `custom` crate for the given versions and checksums.
+fn clarify_versions(versions: &[(&str, &str)]) -> String {
+    versions
+        .iter()
+        .map(|(version, checksum)| {
+            format!(
+                "[[clarify.custom]]\nversion = \"{version}\"\nlicense = \"MIT\"\n\
+                 files = [{{ path = \"LICENSE\", checksum = \"{checksum}\" }}]\n"
+            )
+        })
+        .collect()
+}
+
 #[test]
 fn test_license_policy() {
     // The fixture's own configuration accepts everything.
@@ -74,20 +87,57 @@ fn test_clarifications() {
     assert!(output.contains("clarification for `custom 1.0.0` is outdated"), "{output}");
     assert!(output.contains("checksum mismatch"), "{output}");
 
-    // A clarification is only verified for the versions it is meant for.
-    let outdated = clarify_custom(&"0".repeat(64));
-    let config =
-        format!("{allow}{}", outdated.replace("\nfiles", "\nversion = \"^2\"\nfiles"));
+    // A clarification only applies to the versions it is meant for, even if
+    // its checksums match other versions.
+    let config = format!("{allow}{}", clarify_versions(&[("^2", CUSTOM_CHECKSUM)]));
     let (report, output) = check_fixture("cargo", &[], &config);
-    assert!(!output.contains("is outdated"), "{output}");
-    // Without it, the license of `custom 1.0.0` is still unknown.
     assert!(report.has_errors() && output.contains("custom"), "{output}");
+    assert!(!output.contains("is outdated"), "{output}");
 
-    let valid = clarify_custom(CUSTOM_CHECKSUM);
-    let config =
-        format!("{allow}{}", valid.replace("\nfiles", "\nversion = \"^1\"\nfiles"));
+    // Of several clarifications, the one for the version applies and only it
+    // is verified.
+    let versions = [("^2", "0".repeat(64)), ("^1", CUSTOM_CHECKSUM.into())];
+    let versions = versions.each_ref().map(|(v, c)| (*v, c.as_str()));
+    let config = format!("{allow}{}", clarify_versions(&versions));
     let (report, output) = check_fixture("cargo", &[], &config);
-    assert!(!report.has_errors(), "{output}");
+    assert!(report.is_empty(), "{output}");
+
+    // Only one may apply.
+    let config = format!(
+        "{allow}{}",
+        clarify_versions(&[("^1", CUSTOM_CHECKSUM), ("1.0", CUSTOM_CHECKSUM)])
+    );
+    let (report, output) = check_fixture("cargo", &[], &config);
+    assert!(report.has_errors(), "{output}");
+    assert!(output.contains("2 clarifications apply to `custom 1.0.0`"), "{output}");
+
+    // A clarification without files would be unguarded.
+    let config = format!("{allow}[clarify.custom]\nlicense = \"MIT\"\nfiles = []\n");
+    let (report, output) = check_fixture("cargo", &[], &config);
+    assert!(report.has_errors() && output.contains("lists no files"), "{output}");
+}
+
+#[test]
+fn test_clarified_text() {
+    // The text of the clarification's file is used for the license.
+    let config = format!(
+        "allow = [\"MIT\", \"Zlib\"]\n{}",
+        clarify_versions(&[("^1", CUSTOM_CHECKSUM)])
+    );
+    let (blocks, report) =
+        release(None, &config.parse().unwrap(), &options("cargo", &[])).unwrap();
+    assert!(report.is_empty(), "{report}");
+    let custom = blocks
+        .iter()
+        .find(|block| {
+            block
+                .items
+                .iter()
+                .any(|item| item.description == "The `custom` crate")
+        })
+        .unwrap();
+    assert_eq!(custom.license.to_string(), "MIT");
+    assert!(custom.text.starts_with("The authors permit everyone"), "{}", custom.text);
 }
 
 #[test]
@@ -143,7 +193,7 @@ mod config {
         assert_eq!(config.omit, ["roman-numerals-rs"]);
         assert_eq!(config.clarify.keys().collect::<Vec<_>>(), ["kamadak-exif", "libm"]);
 
-        let libm = &config.clarify["libm"];
+        let [libm] = &config.clarify["libm"][..] else { panic!("one clarification") };
         assert_eq!(libm.license.to_string(), "MIT");
         assert_eq!(libm.files[0].path, "LICENSE.txt");
         assert_eq!(libm.files[0].start.as_deref(), Some("rust-lang/libm as a whole"));
@@ -167,17 +217,27 @@ mod config {
         let clarify = "allow = [\"MIT\"]\n[clarify.a]\nlicense = \"MIT\"\nfiles = []\n";
         let config: Config =
             clarify.replace("files", "version = \"^0.6\"\nfiles").parse().unwrap();
-        let a = &config.clarify["a"];
+        let a = &config.clarify["a"][0];
         assert!(a.applies_to(&"0.6.1".parse().unwrap()));
         assert!(!a.applies_to(&"0.5.5".parse().unwrap()));
         assert!(
-            clarify.parse::<Config>().unwrap().clarify["a"]
+            clarify.parse::<Config>().unwrap().clarify["a"][0]
                 .applies_to(&"9.0.0".parse().unwrap())
         );
         let err = clarify
             .replace("files", "version = \"latest\"\nfiles")
             .parse::<Config>();
         assert!(err.unwrap_err().contains("version"));
+
+        // Several clarifications per crate are given as an array of tables.
+        let many = "allow = [\"MIT\"]\n[[clarify.a]]\nversion = \"^0.5\"\nlicense = \"MIT\"\n\
+                    files = []\n[[clarify.a]]\nversion = \"^0.6\"\nlicense = \"0BSD\"\nfiles = []\n";
+        let config: Config = many.parse().unwrap();
+        let licenses: Vec<_> =
+            config.clarify["a"].iter().map(|c| c.license.to_string()).collect();
+        assert_eq!(licenses, ["MIT", "0BSD"]);
+        let err = many.replace("files", "fils").parse::<Config>().unwrap_err();
+        assert!(err.contains("unknown field `fils`"), "{err}");
     }
 
     /// Creates a package with a configuration file two levels above it.

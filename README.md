@@ -55,6 +55,18 @@ allow = ["CC-BY-SA-3.0"]
 version = "^0.2"
 license = "MIT"
 files = [{ path = "LICENSE.txt", checksum = "88abfa95…", start = "rust-lang/libm as a whole", end = "SOFTWARE." }]
+
+# A crate can have several clarifications for different versions. At most one
+# may apply to each version.
+[[clarify.kamadak-exif]]
+version = "^0.5"
+license = "BSD-2-Clause"
+files = [{ path = "src/lib.rs", checksum = "2e7f6651…", end = "SUCH DAMAGE." }]
+
+[[clarify.kamadak-exif]]
+version = "^0.6"
+license = "BSD-2-Clause"
+files = [{ path = "LICENSE", checksum = "17c496a7…" }]
 ```
 
 A release reads the NOTICE files of dependencies, too: items of a dependency's Typst NOTICE file that have no `Package` get the dependency as their package, so their paths are interpreted relative to the package root, which equals the repository root for crates at the root of their repository.

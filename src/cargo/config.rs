@@ -1,11 +1,14 @@
 //! The configuration shared by license checking and release.
 
 use std::collections::BTreeMap;
+use std::fmt::{self, Formatter};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use krates::semver::{Version, VersionReq};
-use serde::{Deserialize, Deserializer, de::Error};
+use serde::de::value::{MapAccessDeserializer, SeqAccessDeserializer};
+use serde::de::{Error, MapAccess, SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 use spdx::{Expression, Licensee};
 
 /// The conventional location of the configuration file, relative to the root
@@ -45,8 +48,10 @@ pub struct Config {
     pub private: Private,
     /// Licenses that are allowed for individual crates only.
     pub exceptions: Vec<Exception>,
-    /// Licenses of crates that cannot be detected, by crate name.
-    pub clarify: BTreeMap<String, Clarification>,
+    /// Licenses of crates that cannot be detected, by crate name. A crate can
+    /// have several clarifications for different versions.
+    #[serde(deserialize_with = "clarifications")]
+    pub clarify: BTreeMap<String, Vec<Clarification>>,
     /// Crates that are left out of release NOTICE files. Their licenses are
     /// still checked.
     pub omit: Vec<String>,
@@ -133,21 +138,18 @@ pub struct Exception {
 
 /// States the license of a crate that cannot be detected reliably.
 ///
-/// The clarification only applies as long as the checksums of its files match,
-/// so it is not applied by accident if the crate's license changes. The format
-/// and semantics are those of the same-named setting of `cargo-about`, except
-/// that it applies to all versions of the crate unless restricted with
-/// [`version`](Self::version).
+/// The texts of its files are used as the crate's license texts. A file whose
+/// checksum does not match is an error, so the clarification is not applied by
+/// accident if the crate's license changes. The format follows the same-named
+/// setting of `cargo-about`. A clarification applies to all versions of the
+/// crate unless restricted with [`version`](Self::version), and a crate can
+/// have several clarifications as long as at most one applies to each version.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Clarification {
-    /// The versions of the crate the clarification is verified for, e.g.
-    /// `^0.6`. All versions if unset.
-    ///
-    /// Other versions are left to the automatic detection. Since `cargo-about`
-    /// matches clarifications by crate name, it still applies the
-    /// clarification to another version if all of its checksums match there,
-    /// i.e. if the license files are the same.
+    /// The versions of the crate the clarification applies to, e.g. `^0.6`.
+    /// All versions if unset. Other versions are left to the automatic
+    /// detection or to another clarification of the crate.
     #[serde(default, deserialize_with = "optional_version_req")]
     pub version: Option<VersionReq>,
     /// The license expression of the crate, as if it was written in its
@@ -216,4 +218,38 @@ fn optional_version_req<'de, D: Deserializer<'de>>(
         Some(text) => text.parse().map(Some).map_err(D::Error::custom),
         None => Ok(None),
     }
+}
+
+/// Accepts a single clarification or an array of them for each crate.
+fn clarifications<'de, D: Deserializer<'de>>(
+    de: D,
+) -> Result<BTreeMap<String, Vec<Clarification>>, D::Error> {
+    struct OneOrMany(Vec<Clarification>);
+
+    impl<'de> Deserialize<'de> for OneOrMany {
+        fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+            de.deserialize_any(OneOrManyVisitor).map(OneOrMany)
+        }
+    }
+
+    struct OneOrManyVisitor;
+
+    impl<'de> Visitor<'de> for OneOrManyVisitor {
+        type Value = Vec<Clarification>;
+
+        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+            f.write_str("a clarification or an array of clarifications")
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Self::Value, A::Error> {
+            Clarification::deserialize(MapAccessDeserializer::new(map)).map(|c| vec![c])
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<Self::Value, A::Error> {
+            Vec::deserialize(SeqAccessDeserializer::new(seq))
+        }
+    }
+
+    let map = BTreeMap::<String, OneOrMany>::deserialize(de)?;
+    Ok(map.into_iter().map(|(name, many)| (name, many.0)).collect())
 }

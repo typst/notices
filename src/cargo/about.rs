@@ -5,22 +5,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
-use cargo_about::licenses::config::{
-    Clarification as AboutClarification, ClarificationFile as AboutFile,
-    Config as AboutConfig, KrateConfig, Private,
-};
+use cargo_about::licenses::config::{Config as AboutConfig, KrateConfig, Private};
 use cargo_about::licenses::resolution::{self, Files, Severity as AboutSeverity};
 use cargo_about::licenses::{
-    Gatherer, KrateLicense, LicenseFileKind, LicenseSource, store_from_cache,
+    Gatherer, KrateLicense, LicenseFile, LicenseFileKind, LicenseInfo, LicenseSource,
+    store_from_cache,
 };
 use krates::semver::Version;
 use spdx::{AdditionItem, LicenseItem, LicenseReq};
 use toml_span::Spanned;
 use unscanny::Scanner;
 
-use super::{
-    Clarification, ClarificationFile, Config, MetadataOptions, Report, Severity,
-};
+use super::{ClarificationFile, Config, MetadataOptions, Report, Severity};
 
 /// The confidence from which license texts are recognized as a license.
 const CONFIDENCE_THRESHOLD: f32 = 0.8;
@@ -80,13 +76,13 @@ pub(super) fn resolve(
     )
     .context("failed to gather the crate graph")?;
 
-    let verified = verify(config, &krates, report);
-    about_config.crates = krate_configs(config, &verified);
+    about_config.crates = krate_configs(config);
 
     let store = Arc::new(store_from_cache()?);
-    let gathered = Gatherer::with_store(store)
+    let mut gathered = Gatherer::with_store(store)
         .with_confidence_threshold(CONFIDENCE_THRESHOLD)
         .gather(&krates, &about_config, None);
+    clarify(config, &mut gathered, report);
 
     let krate_configs: BTreeMap<_, _> = about_config
         .crates
@@ -198,46 +194,18 @@ fn about_config(config: &Config) -> AboutConfig {
 }
 
 /// Translates the per-crate part of the configuration into the one of
-/// `cargo-about`: the exceptions and the verified clarifications.
-fn krate_configs(
-    config: &Config,
-    verified: &[(&str, &Clarification)],
-) -> BTreeMap<String, Spanned<KrateConfig>> {
+/// `cargo-about`: the exceptions. Clarifications are applied by [`clarify`].
+fn krate_configs(config: &Config) -> BTreeMap<String, Spanned<KrateConfig>> {
     let mut krates: BTreeMap<String, Spanned<KrateConfig>> = BTreeMap::new();
-    fn entry<'a>(
-        krates: &'a mut BTreeMap<String, Spanned<KrateConfig>>,
-        name: &str,
-    ) -> &'a mut KrateConfig {
-        let empty = Spanned::new(KrateConfig { accepted: Vec::new(), clarify: None });
-        &mut krates.entry(name.to_owned()).or_insert(empty).value
-    }
-
     for exception in &config.exceptions {
-        entry(&mut krates, &exception.krate)
+        let empty = Spanned::new(KrateConfig { accepted: Vec::new(), clarify: None });
+        krates
+            .entry(exception.krate.clone())
+            .or_insert(empty)
+            .value
             .accepted
             .extend(exception.allow.iter().cloned());
     }
-
-    for (name, clarification) in verified {
-        let files = clarification
-            .files
-            .iter()
-            .map(|file| AboutFile {
-                path: file.path.clone().into(),
-                checksum: file.checksum.clone(),
-                license: file.license.clone(),
-                start: file.start.clone(),
-                end: file.end.clone(),
-            })
-            .collect();
-        entry(&mut krates, name).clarify = Some(AboutClarification {
-            license: clarification.license.clone(),
-            override_git_commit: None,
-            files,
-            git: Vec::new(),
-        });
-    }
-
     krates
 }
 
@@ -335,66 +303,102 @@ fn same_license(a: &LicenseItem, b: &LicenseItem) -> bool {
     }
 }
 
-// Verifies that clarifications still describe the crates they are meant for.
+// Applies the clarifications after verifying them.
 
-/// Verifies the clarifications against the crates in the dependency tree.
+/// Replaces the gathered licenses of the crates that have a clarification.
 ///
-/// Returns the clarifications that hold for all versions of their crate that
-/// they are meant for. Outdated ones are reported as errors.
-///
-/// `cargo-about` only logs a warning if a checksum does not match and then
-/// silently falls back to another license text. To make this an error, the
-/// clarifications are verified here and only the verified ones are handed to
-/// `cargo-about`.
-pub(super) fn verify<'a>(
-    config: &'a Config,
-    krates: &cargo_about::Krates,
-    report: &mut Report,
-) -> Vec<(&'a str, &'a Clarification)> {
-    let mut verified = Vec::new();
+/// The clarifications are applied here rather than by `cargo-about` because
+/// it supports only one clarification per crate name, applying it to all
+/// versions, and only logs a warning if a checksum does not match before
+/// silently falling back to another license text. Here, an outdated
+/// clarification is an error. The crate then keeps its detected licenses.
+fn clarify(config: &Config, gathered: &mut [KrateLicense<'_>], report: &mut Report) {
+    for krate_license in gathered {
+        let krate = krate_license.krate;
+        if matches!(krate_license.lic_info, LicenseInfo::Ignore) {
+            continue;
+        }
 
-    for (name, clarification) in &config.clarify {
-        let mut holds = true;
-        for krate in krates.krates().filter(|krate| {
-            krate.name == *name && clarification.applies_to(&krate.version)
-        }) {
-            let dir = krate.manifest_path.parent().unwrap_or(&krate.manifest_path);
-            for file in &clarification.files {
-                let result = std::fs::read_to_string(dir.join(&file.path))
-                    .map_err(|err| anyhow::anyhow!("unable to read the file: {err}"))
-                    .and_then(|text| check_text(&text, file));
-                if let Err(reason) = result {
-                    report.add(
-                        Severity::Error,
-                        format!(
-                            "clarification for `{name} {}` is outdated: {}: {reason:#}",
-                            krate.version, file.path
-                        ),
-                        vec![
-                            "the license may have changed, review it and update the \
-                             clarification"
-                                .into(),
-                        ],
-                    );
-                    holds = false;
-                }
+        let Some(clarifications) = config.clarify.get(&krate.name) else { continue };
+        let applicable: Vec<_> = clarifications
+            .iter()
+            .filter(|clarification| clarification.applies_to(&krate.version))
+            .collect();
+        let clarification = match applicable[..] {
+            [] => continue,
+            [clarification] => clarification,
+            _ => {
+                report.add(
+                    Severity::Error,
+                    format!(
+                        "{} clarifications apply to `{} {}`",
+                        applicable.len(),
+                        krate.name,
+                        krate.version
+                    ),
+                    vec!["restrict their versions so that only one applies".into()],
+                );
+                continue;
+            }
+        };
+
+        let mut outdated = |reason: String| {
+            report.add(
+                Severity::Error,
+                format!(
+                    "clarification for `{} {}` is outdated: {reason}",
+                    krate.name, krate.version
+                ),
+                vec![
+                    "the license may have changed, review it and update the \
+                     clarification"
+                        .into(),
+                ],
+            )
+        };
+
+        // Without files, nothing would guard the clarification.
+        if clarification.files.is_empty() {
+            outdated("it lists no files".into());
+            continue;
+        }
+
+        let dir = krate.manifest_path.parent().unwrap_or(&krate.manifest_path);
+        let mut files = Vec::new();
+        for file in &clarification.files {
+            let text = std::fs::read_to_string(dir.join(&file.path))
+                .map_err(|err| anyhow::anyhow!("unable to read the file: {err}"))
+                .and_then(|contents| check_text(&contents, file).map(str::to_owned));
+            match text {
+                Ok(text) => files.push(LicenseFile {
+                    license: LicenseSource::Clarified(
+                        file.license.as_ref().unwrap_or(&clarification.license).clone(),
+                    ),
+                    path: file.path.clone().into(),
+                    confidence: 1.0,
+                    kind: LicenseFileKind::Text(text),
+                }),
+                Err(reason) => outdated(format!("{}: {reason:#}", file.path)),
             }
         }
 
-        if holds {
-            verified.push((name.as_str(), clarification));
+        if files.len() == clarification.files.len() {
+            krate_license.lic_info = LicenseInfo::Expr(clarification.license.clone());
+            krate_license.license_files = files;
         }
     }
-
-    verified
 }
 
-/// Checks the text of a clarification file against its checksum.
+/// Checks the text of a clarification file against its checksum and returns
+/// the checked text.
 ///
 /// If the file has markers, only the text from the first occurrence of the start
 /// marker through the first occurrence of the end marker after it is checked.
 /// This is how `cargo-about` selects the text, too.
-fn check_text(contents: &str, file: &ClarificationFile) -> anyhow::Result<()> {
+fn check_text<'a>(
+    contents: &'a str,
+    file: &ClarificationFile,
+) -> anyhow::Result<&'a str> {
     anyhow::ensure!(!contents.is_empty(), "the file is empty");
 
     let start = match &file.start {
@@ -414,7 +418,9 @@ fn check_text(contents: &str, file: &ClarificationFile) -> anyhow::Result<()> {
         None => contents.len(),
     };
 
-    cargo_about::validate_sha256(&contents[start..end], &file.checksum)
+    let text = &contents[start..end];
+    cargo_about::validate_sha256(text, &file.checksum)?;
+    Ok(text)
 }
 
 #[cfg(test)]
